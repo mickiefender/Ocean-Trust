@@ -6,6 +6,7 @@ import { ArrowLeft, FileText, MapPin, Phone, Plus, WalletCards } from "lucide-re
 import { loadBankerClient, recordBankerVisit, updateBankerClient, uploadBankerClientDocuments } from "../../portal-actions";
 
 type Profile = Awaited<ReturnType<typeof loadBankerClient>>;
+type ClientDraft = { fullName: string; email: string; phone: string; dateOfBirth: string; nationalId: string; address: string; occupation: string };
 
 export default function BankerClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -13,7 +14,7 @@ export default function BankerClientDetailPage({ params }: { params: Promise<{ i
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState({ fullName: "", email: "", phone: "", dateOfBirth: "", nationalId: "", address: "", occupation: "" });
+  const [draft, setDraft] = useState<ClientDraft>({ fullName: "", email: "", phone: "", dateOfBirth: "", nationalId: "", address: "", occupation: "" });
   const [files, setFiles] = useState<Record<string, File>>({});
   useEffect(() => { void params.then(({ id }) => loadBankerClient(id).then(setProfile).catch((reason: Error) => setError(reason.message))); }, [params]);
   const visit = async () => { if (!profile) return; setSaving(true); try { await recordBankerVisit({ clientId: profile.client.id, notes }); setNotes(""); setProfile(await loadBankerClient(profile.client.id)); } catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to record visit."); } finally { setSaving(false); } };
@@ -26,8 +27,8 @@ export default function BankerClientDetailPage({ params }: { params: Promise<{ i
 }
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) { return <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h2 className="mb-4 font-bold text-[#102a43]">{title}</h2>{children}</section>; }
-function EditClientModal({ draft, files, saving, setDraft, setFiles, onClose, onSave }: { draft: Record<string, string>; files: Record<string, File>; saving: boolean; setDraft: React.Dispatch<React.SetStateAction<Record<string, string>>>; setFiles: React.Dispatch<React.SetStateAction<Record<string, File>>>; onClose: () => void; onSave: () => void }) {
-  const fields = ["fullName", "email", "phone", "dateOfBirth", "nationalId", "occupation", "address"];
+function EditClientModal({ draft, files, saving, setDraft, setFiles, onClose, onSave }: { draft: ClientDraft; files: Record<string, File>; saving: boolean; setDraft: React.Dispatch<React.SetStateAction<ClientDraft>>; setFiles: React.Dispatch<React.SetStateAction<Record<string, File>>>; onClose: () => void; onSave: () => void }) {
+  const fields: (keyof ClientDraft)[] = ["fullName", "email", "phone", "dateOfBirth", "nationalId", "occupation", "address"];
   const labels: Record<string, string> = { fullName: "Full name", email: "Email", phone: "Phone", dateOfBirth: "Date of birth", nationalId: "National ID", occupation: "Occupation", address: "Address" };
   return <main className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/40 p-4"><section className="mx-auto max-w-2xl rounded-2xl bg-white p-6 shadow-2xl"><div className="flex items-start justify-between"><div><p className="text-sm text-slate-500">Client management</p><h1 className="text-2xl font-bold text-[#102a43]">Edit client</h1></div><button onClick={onClose} className="text-sm font-semibold text-slate-500">Close</button></div><div className="mt-5 grid gap-4 sm:grid-cols-2">{fields.map((key) => <label key={key} className="text-sm font-semibold text-slate-700">{labels[key]}{key === "address" ? <textarea rows={2} value={draft[key]} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))} className="mt-1.5 w-full rounded-lg border border-slate-200 p-3 font-normal" /> : <input type={key === "dateOfBirth" ? "date" : key === "email" ? "email" : "text"} value={draft[key]} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))} className="mt-1.5 w-full rounded-lg border border-slate-200 p-3 font-normal" />}</label>)}</div><div className="mt-5 grid gap-3 sm:grid-cols-2">{["ghana_card_front", "ghana_card_back", "passport_photo", "business_certificate"].map((type) => <label key={type} className="cursor-pointer rounded-xl border border-dashed border-slate-300 p-4 text-sm font-semibold capitalize text-slate-700">{type.replaceAll("_", " ")}<span className="mt-1 block truncate text-xs font-normal text-slate-400">{files[type]?.name ?? "Choose document"}</span><input type="file" accept=".pdf,.jpg,.jpeg,.png" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) setFiles((current) => ({ ...current, [type]: file })); }} /></label>)}</div><div className="mt-6 flex justify-end gap-3"><button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-600">Cancel</button><button onClick={onSave} disabled={saving || !draft.fullName.trim()} className="rounded-lg bg-[#102a43] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Saving..." : "Save changes"}</button></div></section></main>;
 }
