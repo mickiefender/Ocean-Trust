@@ -28,7 +28,7 @@ export type AdminClient = {
   transactions: { type: string; amount: string; date: string; status: string }[];
   loans: { name: string; amount: string; outstanding: string; status: string }[];
   payments: { type: string; amount: string; date: string; remaining: string; reference: string }[];
-  documents: { name: string; type: string; status: string; url?: string }[];
+  documents: { name: string; type: string; status: string; url?: string; mimeType?: string }[];
   tickets: { subject: string; status: string; date: string }[];
   application?: ClientApplication;
 };
@@ -91,7 +91,7 @@ const requiredUuid = (value: unknown, label: string): string => {
 
 export async function loadAdminClients(): Promise<AdminClient[]> {
   const supabase = createClient();
-  const { data, error } = await supabase.from("clients").select("*, profile:profiles(first_name,last_name,phone), branch:branches(id,name), assignments:client_banker_assignments!client_banker_assignments_client_id_fkey(status,banker:bankers(id,profile:profiles(first_name,last_name))), guarantors:client_guarantors(position,full_name,location,house_number,occupation,phone,relationship,signature), documents:client_documents(id,document_type,file_name,storage_path,verified_at), applications:loan_applications(id,decision,created_at), accounts(id,account_number,balance,account_type:account_types(name)), loans(loan_product:loan_products(name),principal_amount,outstanding_amount,status), payments(amount,paid_at,method,reference,collection:collections(total_amount,collected_amount)), tickets:support_tickets(subject,status,created_at)").order("created_at", { ascending: false });
+  const { data, error } = await supabase.from("clients").select("*, profile:profiles(first_name,last_name,phone), branch:branches(id,name), assignments:client_banker_assignments!client_banker_assignments_client_id_fkey(status,banker:bankers(id,profile:profiles(first_name,last_name))), guarantors:client_guarantors(position,full_name,location,house_number,occupation,phone,relationship,signature), documents:client_documents(id,document_type,file_name,storage_path,mime_type,verified_at), applications:loan_applications(id,decision,created_at), accounts(id,account_number,balance,account_type:account_types(name)), loans(loan_product:loan_products(name),principal_amount,outstanding_amount,status), payments(amount,paid_at,method,reference,collection:collections(total_amount,collected_amount)), tickets:support_tickets(subject,status,created_at)").order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   const clients = (data ?? []) as unknown as Row[];
   const accountIds = clients.flatMap((client) => ((client.accounts as Row[] | null) ?? []).map((account) => String(account.id)));
@@ -129,7 +129,7 @@ export async function loadAdminClients(): Promise<AdminClient[]> {
         const signedUrl = doc.storage_path
           ? (await supabase.storage.from("client-documents").createSignedUrl(String(doc.storage_path), 3600)).data?.signedUrl
           : undefined;
-        return { name: String(doc.file_name), type: String(doc.document_type), status: doc.verified_at ? "Verified" : "Pending", url: signedUrl };
+        return { name: String(doc.file_name), type: String(doc.document_type), status: doc.verified_at ? "Verified" : "Pending", url: signedUrl, mimeType: String(doc.mime_type ?? "") };
       })),
       tickets: ((client.tickets as Row[] | null) ?? []).map((ticket) => ({ subject: String(ticket.subject), status: String(ticket.status), date: date(ticket.created_at) })),
       application: {
@@ -207,12 +207,75 @@ export async function uploadClientDocuments(clientId: string, documents: { type:
   const supabase = createClient();
   const validClientId = requiredUuid(clientId, "client");
   for (const document of documents) {
+    const { data: existing, error: lookupError } = await supabase
+      .from("client_documents")
+      .select("id,storage_path")
+      .eq("client_id", validClientId)
+      .eq("document_type", document.type)
+      .order("created_at", { ascending: false });
+    if (lookupError) throw new Error(`Unable to load the existing ${document.type} document: ${lookupError.message}`);
+
     const extension = document.file.name.split(".").pop()?.toLowerCase() || "bin";
     const storagePath = `${validClientId}/${document.type}-${crypto.randomUUID()}.${extension}`;
-    const { error: uploadError } = await supabase.storage.from("client-documents").upload(storagePath, document.file, { upsert: false, contentType: document.file.type || undefined });
+    const storage = supabase.storage.from("client-documents");
+    const { error: uploadError } = await storage.upload(storagePath, document.file, { upsert: false, contentType: document.file.type || undefined });
     if (uploadError) throw new Error(`Unable to upload ${document.file.name}: ${uploadError.message}`);
-    const { error: recordError } = await supabase.from("client_documents").insert({ client_id: validClientId, document_type: document.type, storage_path: storagePath, file_name: document.file.name, mime_type: document.file.type || null });
-    if (recordError) throw new Error(`Unable to save ${document.file.name}: ${recordError.message}`);
+
+    const previousDocuments = existing ?? [];
+    const recordResult = previousDocuments.length
+      ? await supabase
+          .from("client_documents")
+          .update({
+            storage_path: storagePath,
+            file_name: document.file.name,
+            mime_type: document.file.type || null,
+            verified_at: null,
+            verified_by: null,
+          })
+          .eq("id", previousDocuments[0].id)
+          .select("id")
+          .maybeSingle()
+      : await supabase
+          .from("client_documents")
+          .insert({
+            client_id: validClientId,
+            document_type: document.type,
+            storage_path: storagePath,
+            file_name: document.file.name,
+            mime_type: document.file.type || null,
+          })
+          .select("id")
+          .maybeSingle();
+
+    if (recordResult.error || !recordResult.data) {
+      const { error: cleanupError } = await storage.remove([storagePath]);
+      const message = recordResult.error?.message ?? "No document record was updated.";
+      if (cleanupError) {
+        throw new Error(`Unable to save ${document.file.name}: ${message} Uploaded file cleanup also failed: ${cleanupError.message}`);
+      }
+      throw new Error(`Unable to save ${document.file.name}: ${message}`);
+    }
+
+    const oldDocuments = previousDocuments.slice(1);
+    if (oldDocuments.length) {
+      const { error: duplicateError } = await supabase
+        .from("client_documents")
+        .delete()
+        .in("id", oldDocuments.map((oldDocument) => oldDocument.id));
+      if (duplicateError) {
+        throw new Error(`The new ${document.type} was saved, but older document records could not be removed: ${duplicateError.message}`);
+      }
+    }
+
+    const oldPaths = previousDocuments
+      .map((oldDocument) => String(oldDocument.storage_path))
+      .filter((path) => path && path !== storagePath);
+    if (oldPaths.length) {
+      const { error: removeError } = await storage.remove(oldPaths);
+      if (removeError) {
+        throw new Error(`The new ${document.type} was saved, but the previous file could not be removed: ${removeError.message}`);
+      }
+    }
   }
 
 }
