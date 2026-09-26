@@ -58,7 +58,7 @@ export function BankerShell({ children }: { children: React.ReactNode }) {
       </aside>
       {open && <button aria-label="Close navigation" onClick={() => setOpen(false)} className="fixed inset-0 z-40 bg-slate-950/40 lg:hidden" />}
       <div className="lg:pl-72">
-        <header className="border-b border-slate-200 bg-white">
+        <header className="sticky top-0 z-30 border-b border-slate-200 bg-white lg:static">
           <div className="flex items-center px-5 py-4 sm:px-8">
             <button onClick={() => setOpen(true)} className="mr-3 rounded-lg p-2 text-slate-500 hover:bg-slate-50 lg:hidden" aria-label="Open navigation"><Menu size={20} /></button>
             <div className="flex w-full items-center justify-between gap-4"><p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-400">Ocean Trust · Banker portal</p><NotificationBell scope="banker" /></div>

@@ -80,6 +80,34 @@ async function requireOperator(): Promise<void> {
   }
 }
 
+async function requireAdministrator(): Promise<void> {
+  const supabase = await createClient();
+  const { data: authData } = await supabase.auth.getUser();
+  const user = authData?.user;
+  if (!user) {
+    throw new Error("Your session has expired. Sign in again to manage applications.");
+  }
+
+  const admin = createRepositoryClient();
+  const { data, error } = await admin
+    .from("user_roles")
+    .select("profile_id, role:roles(name)")
+    .eq("profile_id", user.id);
+  if (error) throw error;
+
+  const permitted = ((data ?? []) as Row[]).some((assignment) => {
+    const role = (assignment.role ?? null) as Row | null;
+    return (
+      text(assignment.profile_id) === user.id &&
+      ["super_admin", "company_admin", "admin"].includes(text(role?.name).toLowerCase())
+    );
+  });
+
+  if (!permitted) {
+    throw new Error("Your account does not have permission to delete applications.");
+  }
+}
+
 export async function loadClientFormOptions(): Promise<ClientFormOptions> {
   await requireOperator();
   const admin = createRepositoryClient();
@@ -202,6 +230,26 @@ export async function setClientStatus(clientId: string, active: boolean): Promis
     return { ok: false, fieldErrors: {}, message: describeDbError(error) };
   }
 
+}
+
+export async function deleteClientApplication(applicationId: string): Promise<void> {
+  if (typeof applicationId !== "string" || !applicationId.trim()) {
+    throw new Error("That application reference is missing.");
+  }
+
+  await requireAdministrator();
+  const admin = createRepositoryClient();
+  const { data, error } = await admin
+    .from("loan_applications")
+    .delete()
+    .eq("id", applicationId.trim())
+    .select("id")
+    .maybeSingle();
+
+  if (error) throw new Error(describeDbError(error));
+  if (!data) throw new Error("That application could not be found.");
+
+  revalidatePath("/admin");
 }
 
 export async function sendClientSms(clientId: string, message: string): Promise<{ recipient: string }> {
