@@ -1,0 +1,1 @@
+[{"id":"81cf624c-ac11-45b2-badc-20a25af93aeb","loan_number":"LN-20260924213108-A01703","client_id":"31c77e14-b7d9-49fe-b005-1694f4132452","status":"active","principal_amount":10000.0000,"outstanding_amount":8500.0000,"account_id":"c97157c3-80e0-4d7c-9043-96e99c230676"}]

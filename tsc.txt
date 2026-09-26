@@ -1,0 +1,11 @@
+app/banker/clients/[id]/page.tsx(24,84): error TS2322: Type 'Dispatch<SetStateAction<{ fullName: string; email: string; phone: string; dateOfBirth: string; nationalId: string; address: string; occupation: string; }>>' is not assignable to type 'Dispatch<SetStateAction<Record<string, string>>>'.
+  Type 'SetStateAction<Record<string, string>>' is not assignable to type 'SetStateAction<{ fullName: string; email: string; phone: string; dateOfBirth: string; nationalId: string; address: string; occupation: string; }>'.
+    Type 'Record<string, string>' is not assignable to type 'SetStateAction<{ fullName: string; email: string; phone: string; dateOfBirth: string; nationalId: string; address: string; occupation: string; }>'.
+      Type 'Record<string, string>' is missing the following properties from type '{ fullName: string; email: string; phone: string; dateOfBirth: string; nationalId: string; address: string; occupation: string; }': fullName, email, phone, dateOfBirth, and 3 more.
+app/banker/page.tsx(31,50): error TS2345: Argument of type 'FormValues' is not assignable to parameter of type 'Pick<ClientIntakeValues, "phone" | "fullName" | "email" | "dateOfBirth" | "gender" | "nationalId" | "address" | "maritalStatus" | "religion" | "occupation" | ... 9 more ... | "paymentMode">'.
+  Types of property 'businessDuration' are incompatible.
+    Type '"" | "6 months" | "1 year" | "2 years" | "3 years and above"' is not assignable to type '"" | BusinessDuration'.
+      Type '"6 months"' is not assignable to type '"" | BusinessDuration'. Did you mean '"6_months"'?
+app/banker/page.tsx(48,125): error TS2322: Type 'string | GuarantorValues[]' is not assignable to type 'string'.
+  Type 'GuarantorValues[]' is not assignable to type 'string'.
+app/banker/page.tsx(49,2729): error TS2345: Argument of type 'GuarantorValues[]' is not assignable to parameter of type 'string'.

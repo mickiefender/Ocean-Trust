@@ -1,0 +1,11 @@
+clients content-range: 0-0/3
+bankers content-range: 0-0/1
+client_banker_assignments content-range: 0-0/4
+loans content-range: 0-0/1
+collections content-range: 0-0/1
+collection_schedules content-range: 0-0/1
+payments content-range: 0-0/5
+transactions content-range: 0-0/7
+accounts content-range: 0-0/1
+profiles content-range: 0-0/2
+user_roles content-range: 0-0/2

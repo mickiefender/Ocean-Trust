@@ -20,6 +20,21 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Client SMS (Arkesel)
+
+The admin client profile includes an individual SMS composer. Configure these
+server-side environment variables before sending messages:
+
+```env
+ARKESEL_API_KEY=your_arkesel_api_key
+ARKESEL_SENDER_ID=your_approved_sender_id
+ARKESEL_DEFAULT_COUNTRY_CODE=232
+```
+
+Keep the Arkesel API key out of `NEXT_PUBLIC_*` variables and never commit it.
+Local numbers beginning with `0` are normalized using the configured country
+calling code; numbers already in international format are sent as entered.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

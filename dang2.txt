@@ -1,0 +1,6 @@
+function ClientProfile({ client, onClose, onSave, onToggleStatus, onNote, onAction, onVerifyKyc }: { client: Client; onClose: () => void; onSave: (client: Client, documents: { type: string; file: File }[]) => Promise<void>; onToggleStatus: () => void; onNote: () => void; onAction: (message: string) => void; onVerifyKyc: () => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(client);
+  const [files, setFiles] = useState<Record<string, File>>({});
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setDraft(client); }, [client]);

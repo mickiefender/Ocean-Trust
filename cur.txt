@@ -1,0 +1,6 @@
+421:function TransactionPanel({ transactions }: { transactions: AdminTransaction[] }) {
+656:function CollectionManagement({ collections, clients, loans, query, setQuery, onAdd, onSelect, onRecord, onDelete, onNotice }: { collections: CollectionRow[]; clients: Client[]; loans: CollectionLoan[]; query: string; setQuery: (value: string) => void; onAdd: () => void; onSelect: (collection: CollectionRow) => void; onRecord: (collection: CollectionRow) => void; onDelete: (collection: CollectionRow) => void; onNotice: (message: string) => void }) {
+700:function CollectionScheduleModal({ clients, accounts, onClose, onSaved }: { clients: CollectionClient[]; accounts: CollectionAccount[]; onClose: () => void; onSaved: () => Promise<void> }) {
+710:function RecordCollectionModal({ collections, accounts, onClose, onSaved }: { collections: CollectionRow[]; accounts: CollectionAccount[]; onClose: () => void; onSaved: (message: string) => Promise<void> }) {
+717:function CollectionHistory({ collection, onClose, onRecord }: { collection: CollectionRow; accounts: CollectionAccount[]; onClose: () => void; onRecord: () => void }) {
+     808 app/admin/page.tsx

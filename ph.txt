@@ -1,0 +1,70 @@
+"use client";
+
+import {
+  Activity,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Building2,
+  Calendar,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  CircleAlert,
+  CircleDollarSign,
+  CreditCard,
+  DollarSign,
+  FileText,
+  History,
+  Landmark,
+  FileCheck2,
+  LayoutDashboard,
+  Mail,
+  MapPin,
+  Menu,
+  MoreHorizontal,
+  PencilLine,
+  Plus,
+  Phone,
+  Search,
+  Settings2,
+  ShieldCheck,
+  SlidersHorizontal,
+  TrendingUp,
+  UserCog,
+  Users,
+  WalletCards,
+  X,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Area, AreaChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { createClient } from "@/lib/supabase/client";
+import { createAdminClient, loadAdminClients, reviewClientApplication, setAdminClientStatus, uploadClientDocuments, verifyClientKyc, type AdminClient, type ClientApplication, type ClientStatus, type Guarantor, type KycStatus, updateAdminClient } from "./client-data";
+import { assignClientsToBanker, createBanker, loadBankerManagement, setBankerTarget, updateBanker } from "./banker-actions";
+import { createAdminBranch, loadAdminBranches, type AdminBranch } from "./branch-data";
+import { loadAdminCompany, saveAdminCompany, type AdminCompany } from "./company-data";
+import { createAdminAccount, loadAdminAccounts, setAdminAccountStatus, type AdminAccount } from "./account-data";
+import { createCollectionSchedule, deleteCollectionSchedule, loadCollections, recordCollection, type CollectionAccount, type CollectionClient, type CollectionRow } from "./collection-data";
+import { executeFinancialTransaction, loadAdminTransactions, type AdminTransaction } from "./transaction-data";
+import { approveLoan, createLoanApplication, createLoanProduct, disburseLoan, loadAdminLoans, recordLoanRepayment, type AdminLoan, type LoanProduct } from "./loan-data";
+import { loadAdminRoles, loadAdminUsers, type AdminRole, type AdminUser } from "./dashboard-data";
+
+type Section = "Overview" | "Applications" | "Collections" | "Transactions" | "Loans" | "Bankers" | "Company" | "Branches" | "Users" | "Roles & permissions";
+type Client = AdminClient;
+type ApplicationFilter = "All" | ClientStatus | "approved" | "pending" | "rejected";
+
+const navItems: { label: Section; icon: typeof LayoutDashboard }[] = [
+  { label: "Overview", icon: LayoutDashboard },
+  { label: "Applications", icon: Users },
+  { label: "Collections", icon: CircleDollarSign },
+  { label: "Transactions", icon: History },
+  { label: "Loans", icon: CreditCard },
+  { label: "Bankers", icon: UserCog },
+  { label: "Company", icon: Building2 },
+  { label: "Branches", icon: Building2 },
+  { label: "Users", icon: Users },
+  { label: "Roles & permissions", icon: ShieldCheck },
+];
+
+function Badge({ children, tone = "green" }: { children: React.ReactNode; tone?: "green" | "red" | "blue" | "amber" | "slate" }) {
+  const colors = { green: "bg-emerald-50 text-emerald-700", red: "bg-rose-50 text-rose-700", blue: "bg-blue-50 text-blue-700", amber: "bg-amber-50 text-amber-700", slate: "bg-slate-100 text-slate-600" };
+  return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${colors[tone]}`}>{children}</span>;

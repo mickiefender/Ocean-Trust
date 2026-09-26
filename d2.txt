@@ -1,0 +1,1 @@
+[{"id":"d971b29f-ed64-40ea-9572-5a79d9d45b89","reference":"SCH-CEBED5F0145B","client_id":"31c77e14-b7d9-49fe-b005-1694f4132452","loan_id":null,"banker_id":null,"total_amount":10000.0000,"collected_amount":7100.0000,"status":"partially_paid","due_date":"2026-09-24"}]

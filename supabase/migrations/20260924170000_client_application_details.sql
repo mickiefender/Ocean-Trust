@@ -1,0 +1,28 @@
+alter table public.clients
+  add column if not exists full_name text,
+  add column if not exists email text,
+  add column if not exists phone text,
+  add column if not exists gender text,
+  add column if not exists marital_status text,
+  add column if not exists religion text,
+  add column if not exists occupation text,
+  add column if not exists occupation_type text,
+  add column if not exists business_location text,
+  add column if not exists residence text,
+  add column if not exists business_duration text,
+  add column if not exists application_date date,
+  add column if not exists guarantors jsonb not null default '[]'::jsonb,
+  add column if not exists loan_principal_amount numeric(19, 4),
+  add column if not exists loan_interest_rate numeric(7, 4),
+  add column if not exists loan_processing_fee numeric(19, 4),
+  add column if not exists loan_duration text,
+  add column if not exists loan_payment_mode text,
+  add column if not exists applicant_signature text,
+  add column if not exists loan_approved boolean,
+  add column if not exists approved_amount numeric(19, 4),
+  add column if not exists official_interest_rate numeric(7, 4),
+  add column if not exists official_duration text,
+  add column if not exists officer_signature text,
+  add column if not exists official_remarks text;
+
+comment on column public.clients.guarantors is 'Loan application guarantors captured from the client application form.';

@@ -1,0 +1,6 @@
+=== collections ===
+[{"id":"d971b29f-ed64-40ea-9572-5a79d9d45b89","banker_id":null,"priority":null,"loan_id":null,"collection_method":"cash","description":null}]
+HTTP:200
+=== transactions ===
+[{"id":"dd37e71d-53b5-4005-8c4d-28419fa23d76","loan_id":null,"client_id":"31c77e14-b7d9-49fe-b005-1694f4132452","metadata":{}}]
+HTTP:200
