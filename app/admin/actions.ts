@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { requireAdministrator } from "./authorization";
 import type { AdminClient, Row } from "./client-mapper";
 import { text } from "./client-mapper";
 import {
@@ -77,34 +78,6 @@ async function requireOperator(): Promise<void> {
 
   if (!permitted) {
     throw new Error("Your account does not have permission to manage clients.");
-  }
-}
-
-async function requireAdministrator(): Promise<void> {
-  const supabase = await createClient();
-  const { data: authData } = await supabase.auth.getUser();
-  const user = authData?.user;
-  if (!user) {
-    throw new Error("Your session has expired. Sign in again to manage applications.");
-  }
-
-  const admin = createRepositoryClient();
-  const { data, error } = await admin
-    .from("user_roles")
-    .select("profile_id, role:roles(name)")
-    .eq("profile_id", user.id);
-  if (error) throw error;
-
-  const permitted = ((data ?? []) as Row[]).some((assignment) => {
-    const role = (assignment.role ?? null) as Row | null;
-    return (
-      text(assignment.profile_id) === user.id &&
-      ["super_admin", "company_admin", "admin"].includes(text(role?.name).toLowerCase())
-    );
-  });
-
-  if (!permitted) {
-    throw new Error("Your account does not have permission to delete applications.");
   }
 }
 
@@ -232,22 +205,100 @@ export async function setClientStatus(clientId: string, active: boolean): Promis
 
 }
 
-export async function deleteClientApplication(applicationId: string): Promise<void> {
-  if (typeof applicationId !== "string" || !applicationId.trim()) {
-    throw new Error("That application reference is missing.");
+export async function deleteClientApplication(clientId: string): Promise<void> {
+  if (typeof clientId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientId.trim())) {
+    throw new Error("A valid client reference is required to find the application.");
   }
 
-  await requireAdministrator();
-  const admin = createRepositoryClient();
-  const { data, error } = await admin
-    .from("loan_applications")
-    .delete()
-    .eq("id", applicationId.trim())
-    .select("id")
+  const { admin } = await requireAdministrator();
+  const normalizedClientId = clientId.trim();
+  const { data: client, error: clientError } = await admin
+    .from("clients")
+    .select("id,application_date,marital_status,religion,occupation,occupation_type,business_location,residence,business_duration,guarantors,loan_principal_amount,loan_interest_rate,loan_processing_fee,loan_duration,loan_payment_mode,applicant_signature,loan_approved,approved_amount,official_interest_rate,official_duration,officer_signature,official_remarks")
+    .eq("id", normalizedClientId)
     .maybeSingle();
+  if (clientError) throw new Error(describeDbError(clientError));
+  if (!client) throw new Error("That client could not be found.");
 
-  if (error) throw new Error(describeDbError(error));
-  if (!data) throw new Error("That application could not be found.");
+  const { data: applications, error: lookupError } = await admin
+    .from("loan_applications")
+    .select("id")
+    .eq("client_id", normalizedClientId)
+    .order("created_at", { ascending: false });
+  if (lookupError) throw new Error(describeDbError(lookupError));
+  const legacyValues = [
+    client.application_date,
+    client.marital_status,
+    client.religion,
+    client.occupation,
+    client.occupation_type,
+    client.business_location,
+    client.residence,
+    client.business_duration,
+    client.loan_principal_amount,
+    client.loan_interest_rate,
+    client.loan_processing_fee,
+    client.loan_duration,
+    client.loan_payment_mode,
+    client.applicant_signature,
+    client.loan_approved,
+    client.approved_amount,
+    client.official_interest_rate,
+    client.official_duration,
+    client.officer_signature,
+    client.official_remarks,
+  ];
+  const hasLegacyApplication = legacyValues.some((value) => value !== null && value !== undefined && value !== "")
+    || (Array.isArray(client.guarantors) && client.guarantors.length > 0);
+  if (!applications?.length && !hasLegacyApplication) {
+    throw new Error("No application details were found for this client.");
+  }
+
+  if (applications?.length) {
+    const { data, error } = await admin
+      .from("loan_applications")
+      .delete()
+      .eq("client_id", normalizedClientId)
+      .select("id");
+    if (error) throw new Error(describeDbError(error));
+    if (data?.length !== applications.length) {
+      throw new Error("Not all of this client's applications could be deleted. Refresh and try again.");
+    }
+  }
+
+  const { error: guarantorError } = await admin
+    .from("client_guarantors")
+    .delete()
+    .eq("client_id", normalizedClientId);
+  if (guarantorError) throw new Error(describeDbError(guarantorError));
+
+  const { error: clearError } = await admin
+    .from("clients")
+    .update({
+      application_date: null,
+      marital_status: null,
+      religion: null,
+      occupation: null,
+      occupation_type: null,
+      business_location: null,
+      residence: null,
+      business_duration: null,
+      guarantors: [],
+      loan_principal_amount: null,
+      loan_interest_rate: null,
+      loan_processing_fee: null,
+      loan_duration: null,
+      loan_payment_mode: null,
+      applicant_signature: null,
+      loan_approved: null,
+      approved_amount: null,
+      official_interest_rate: null,
+      official_duration: null,
+      officer_signature: null,
+      official_remarks: null,
+    })
+    .eq("id", normalizedClientId);
+  if (clearError) throw new Error(describeDbError(clearError));
 
   revalidatePath("/admin");
 }

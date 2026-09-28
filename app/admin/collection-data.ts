@@ -278,21 +278,3 @@ export async function linkCollectionToLoan(collectionId: string, loanId: string)
   });
   if (error) throw new Error(error.message);
 }
-
-export async function deleteCollectionSchedule(collectionId: string) {
-  const supabase = createClient();
-  const { data: collection, error: lookupError } = await supabase
-    .from("collections")
-    .select("id,collected_amount")
-    .eq("id", collectionId)
-    .maybeSingle();
-
-  if (lookupError) throw new Error(lookupError.message);
-  if (!collection) throw new Error("Collection schedule was not found.");
-  if (Number(collection.collected_amount) > 0) {
-    throw new Error("A schedule with recorded payments cannot be deleted.");
-  }
-
-  const { error } = await supabase.from("collections").delete().eq("id", collectionId);
-  if (error) throw new Error(error.message);
-}

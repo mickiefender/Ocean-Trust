@@ -7,6 +7,7 @@ export type AdminClient = {
   initials: string;
   avatarUrl: string;
   applicationId: string | null;
+  hasApplication: boolean;
   applicationDecision: string;
   name: string;
   email: string;
@@ -109,10 +110,35 @@ export async function loadAdminClients(): Promise<AdminClient[]> {
     const accounts = (client.accounts as Row[] | null) ?? [];
     const docs = (client.documents as Row[] | null) ?? [];
     const latestApplication = ((client.applications as Row[] | null) ?? []).slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+    const guarantors = (client.guarantors as Row[] | null) ?? [];
+    const hasLegacyApplication = [
+      client.application_date,
+      client.marital_status,
+      client.religion,
+      client.occupation,
+      client.occupation_type,
+      client.business_location,
+      client.residence,
+      client.business_duration,
+      client.loan_principal_amount,
+      client.loan_interest_rate,
+      client.loan_processing_fee,
+      client.loan_duration,
+      client.loan_payment_mode,
+      client.applicant_signature,
+      client.loan_approved,
+      client.approved_amount,
+      client.official_interest_rate,
+      client.official_duration,
+      client.officer_signature,
+      client.official_remarks,
+    ].some((value) => value !== null && value !== undefined && value !== "");
+    const hasApplication = Boolean(latestApplication) || hasLegacyApplication || guarantors.length > 0;
+    const legacyDecision = client.loan_approved === true ? "approved" : client.loan_approved === false ? "rejected" : "pending";
     const passport = docs.find((doc) => String(doc.document_type) === "passport_photo" && doc.storage_path);
     const avatarUrl = passport ? (await supabase.storage.from("client-documents").createSignedUrl(String(passport.storage_path), 3600)).data?.signedUrl ?? "" : "";
     return {
-      id: String(client.id), initials: initials(name), avatarUrl, applicationId: latestApplication?.id ? String(latestApplication.id) : null, applicationDecision: String(latestApplication?.decision ?? "none"), name: String(client.full_name ?? name), email: String(client.email ?? ""), phone: String(client.phone ?? profile?.phone ?? ""), status: client.status === "active" ? "Active" : "Inactive",
+      id: String(client.id), initials: initials(name), avatarUrl, applicationId: latestApplication?.id ? String(latestApplication.id) : null, hasApplication, applicationDecision: String(latestApplication?.decision ?? (hasLegacyApplication ? legacyDecision : "none")), name: String(client.full_name ?? name), email: String(client.email ?? ""), phone: String(client.phone ?? profile?.phone ?? ""), status: client.status === "active" ? "Active" : "Inactive",
       kyc: docs.some((doc) => doc.verified_at) ? "Verified" : "Pending", bankerId: banker?.id ? String(banker.id) : null,
       banker: [bankerProfile?.first_name, bankerProfile?.last_name].filter(Boolean).join(" ") || "Unassigned", branch: String(branch?.name ?? "Unassigned"), branchId: nullableUuid(branch?.id ?? client.branch_id) ?? "",
       address: String(client.address ?? ""), dob: isoDate(client.date_of_birth), gender: labelGender(client.gender), idType: client.national_id ? "National ID" : "—", idNumber: String(client.national_id ?? "—"), joined: date(client.created_at),
@@ -134,7 +160,7 @@ export async function loadAdminClients(): Promise<AdminClient[]> {
       tickets: ((client.tickets as Row[] | null) ?? []).map((ticket) => ({ subject: String(ticket.subject), status: String(ticket.status), date: date(ticket.created_at) })),
       application: {
         applicationDate: isoDate(client.application_date), maritalStatus: String(client.marital_status ?? ""), religion: String(client.religion ?? ""), occupation: String(client.occupation ?? ""), occupationType: String(client.occupation_type ?? ""), businessLocation: String(client.business_location ?? ""), residence: String(client.residence ?? ""), businessDuration: labelBusinessDuration(client.business_duration),
-        guarantors: (((client.guarantors as Row[] | null) ?? []).map((guarantor) => ({ name: String(guarantor.full_name ?? ""), location: String(guarantor.location ?? ""), houseNumber: String(guarantor.house_number ?? ""), occupation: String(guarantor.occupation ?? ""), phone: String(guarantor.phone ?? ""), signature: String(guarantor.signature ?? ""), relationship: String(guarantor.relationship ?? "") })) || blankGuarantors()), loanPrincipalAmount: String(client.loan_principal_amount ?? ""), loanInterestRate: String(client.loan_interest_rate ?? ""), processingFee: String(client.loan_processing_fee ?? ""), loanDuration: client.loan_duration ? `${client.loan_duration} months` : "", paymentMode: labelPaymentMode(client.loan_payment_mode), applicantSignature: String(client.applicant_signature ?? ""), loanApproved: client.loan_approved === true ? "Yes" : client.loan_approved === false ? "No" : "", approvedAmount: String(client.approved_amount ?? ""), officialInterestRate: String(client.official_interest_rate ?? ""), officialDuration: String(client.official_duration ?? ""), officerSignature: String(client.officer_signature ?? ""), officialRemarks: String(client.official_remarks ?? ""),
+        guarantors: (guarantors.map((guarantor) => ({ name: String(guarantor.full_name ?? ""), location: String(guarantor.location ?? ""), houseNumber: String(guarantor.house_number ?? ""), occupation: String(guarantor.occupation ?? ""), phone: String(guarantor.phone ?? ""), signature: String(guarantor.signature ?? ""), relationship: String(guarantor.relationship ?? "") })) || blankGuarantors()), loanPrincipalAmount: String(client.loan_principal_amount ?? ""), loanInterestRate: String(client.loan_interest_rate ?? ""), processingFee: String(client.loan_processing_fee ?? ""), loanDuration: client.loan_duration ? `${client.loan_duration} months` : "", paymentMode: labelPaymentMode(client.loan_payment_mode), applicantSignature: String(client.applicant_signature ?? ""), loanApproved: client.loan_approved === true ? "Yes" : client.loan_approved === false ? "No" : "", approvedAmount: String(client.approved_amount ?? ""), officialInterestRate: String(client.official_interest_rate ?? ""), officialDuration: String(client.official_duration ?? ""), officerSignature: String(client.officer_signature ?? ""), officialRemarks: String(client.official_remarks ?? ""),
       },
     };
   }));
