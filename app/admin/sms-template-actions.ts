@@ -22,6 +22,17 @@ export type SmsTemplate = {
   updated_at: string;
 };
 
+export type SmsHistoryEntry = {
+  id: string;
+  client_name: string;
+  recipient: string;
+  message: string;
+  template_name: string | null;
+  status: "pending" | "sent" | "failed";
+  failure_reason: string | null;
+  created_at: string;
+};
+
 type SmsTemplateInput = {
   id?: string;
   name: string;
@@ -77,6 +88,17 @@ export async function loadSmsTemplates(): Promise<SmsTemplate[]> {
     .order("name");
   if (error) throw new Error(`Unable to load SMS templates: ${error.message}`);
   return (data ?? []) as unknown as SmsTemplate[];
+}
+
+export async function loadSmsHistory(): Promise<SmsHistoryEntry[]> {
+  const { adminClient } = await requireSmsAdmin();
+  const { data, error } = await adminClient
+    .from("sms_history")
+    .select("id,client_name,recipient,message,template_name,status,failure_reason,created_at")
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (error) throw new Error(`Unable to load SMS history: ${error.message}`);
+  return (data ?? []) as unknown as SmsHistoryEntry[];
 }
 
 export async function saveSmsTemplate(input: SmsTemplateInput): Promise<void> {

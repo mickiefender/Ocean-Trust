@@ -16,6 +16,8 @@ import {
   Plus,
   Search,
   Send,
+  CheckCircle2,
+  CircleAlert,
   Menu,
   ShieldCheck,
   ToggleLeft,
@@ -35,8 +37,10 @@ import {
   loadSmsTemplates,
   saveSmsTemplate,
   setSmsTemplateActive,
+  loadSmsHistory,
   type SmsTemplate,
   type SmsTemplateCategory,
+  type SmsHistoryEntry,
 } from "../sms-template-actions";
 
 type SmsClient = Awaited<ReturnType<typeof loadAdminClients>>[number];
@@ -89,8 +93,13 @@ const adminNavigation = [
 
 export default function SmsTemplatesClient() {
   const [templates, setTemplates] = useState<SmsTemplate[]>([]);
+  const [smsHistory, setSmsHistory] = useState<SmsHistoryEntry[]>([]);
   const [clients, setClients] = useState<SmsClient[]>([]);
   const [loading, setLoading] = useState(true);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState("");
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyStatus, setHistoryStatus] = useState("all");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -110,6 +119,12 @@ export default function SmsTemplatesClient() {
     setTemplates(rows);
   }, []);
 
+  const refreshSmsHistory = useCallback(async () => {
+    setHistoryError("");
+    const rows = await loadSmsHistory();
+    setSmsHistory(rows);
+  }, []);
+
   useEffect(() => {
     let active = true;
     void Promise.all([loadSmsTemplates(), loadAdminClients()])
@@ -126,10 +141,26 @@ export default function SmsTemplatesClient() {
       .finally(() => {
         if (active) setLoading(false);
       });
+    void loadSmsHistory()
+      .then((rows) => { if (active) setSmsHistory(rows); })
+      .catch((reason: unknown) => {
+        if (active) setHistoryError(reason instanceof Error ? reason.message : "Unable to load SMS history.");
+      })
+      .finally(() => { if (active) setHistoryLoading(false); });
     return () => {
       active = false;
     };
   }, []);
+
+  const filteredSmsHistory = useMemo(
+    () => smsHistory.filter((entry) => {
+      const matchesSearch = `${entry.client_name} ${entry.recipient} ${entry.message} ${entry.template_name ?? ""}`
+        .toLowerCase()
+        .includes(historySearch.trim().toLowerCase());
+      return matchesSearch && (historyStatus === "all" || entry.status === historyStatus);
+    }),
+    [historySearch, historyStatus, smsHistory],
+  );
 
   const filteredTemplates = useMemo(
     () =>
@@ -233,9 +264,12 @@ export default function SmsTemplatesClient() {
     setSending(true);
     setError("");
     try {
-      await sendClientSms(selectedRecipient.id, renderMessage(sendMessage, selectedRecipient));
+      await sendClientSms(selectedRecipient.id, renderMessage(sendMessage, selectedRecipient), sendingTemplate.name);
       setSendingTemplate(null);
       showNotice(`SMS sent to ${selectedRecipient.name}.`);
+      void refreshSmsHistory().catch((reason: unknown) => {
+        setHistoryError(reason instanceof Error ? reason.message : "Unable to refresh SMS history.");
+      });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to send the SMS.");
     } finally {
@@ -356,6 +390,67 @@ export default function SmsTemplatesClient() {
               <p className="mt-1 text-sm text-slate-500">{templates.length ? "Try a different search or category." : "Create a reusable SMS template to get started."}</p>
               {!templates.length && <button onClick={() => setDraft({ ...emptyDraft })} className="mt-4 text-sm font-semibold text-blue-700">Create your first template</button>}
             </div>
+          )}
+        </section>
+        <section className="mt-7 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="font-bold text-[#102a43]">SMS history</h2>
+              <p className="mt-1 text-xs text-slate-500">The 100 most recent message attempts, including failed sends.</p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <label className="relative">
+                <span className="sr-only">Search SMS history</span>
+                <Search size={16} className="absolute left-3 top-3 text-slate-400" />
+                <input value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} placeholder="Search history..." className="w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 sm:w-64" />
+              </label>
+              <select aria-label="Filter SMS history by status" value={historyStatus} onChange={(event) => setHistoryStatus(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600 outline-none focus:border-blue-500">
+                <option value="all">All statuses</option>
+                <option value="sent">Sent</option>
+                <option value="pending">Pending</option>
+                <option value="failed">Failed</option>
+              </select>
+            </div>
+          </div>
+          {historyError ? (
+            <div className="p-5">
+              <p role="alert" className="text-sm text-rose-700">{historyError}</p>
+              <button onClick={() => { setHistoryLoading(true); void refreshSmsHistory().catch((reason: unknown) => setHistoryError(reason instanceof Error ? reason.message : "Unable to load SMS history.")).finally(() => setHistoryLoading(false)); }} className="mt-3 text-sm font-semibold text-blue-700">Try again</button>
+            </div>
+          ) : historyLoading ? (
+            <p className="p-6 text-sm text-slate-500">Loading SMS history...</p>
+          ) : filteredSmsHistory.length ? (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-left text-sm">
+                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <tr><th className="p-4">Recipient</th><th className="p-4">Message</th><th className="p-4">Template</th><th className="p-4">Status</th><th className="p-4">Date</th></tr>
+                </thead>
+                <tbody>
+                  {filteredSmsHistory.map((entry) => (
+                    <tr key={entry.id} className="border-t border-slate-100 align-top">
+                      <td className="p-4"><div className="font-semibold text-slate-800">{entry.client_name}</div><div className="mt-1 text-xs text-slate-500">{entry.recipient}</div></td>
+                      <td className="max-w-md p-4">
+                        <details>
+                          <summary className="max-w-sm cursor-pointer truncate text-slate-700">{entry.message}</summary>
+                          <p className="mt-2 whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-600">{entry.message}</p>
+                        </details>
+                        {entry.failure_reason && <p className="mt-2 flex items-start gap-1 text-xs text-rose-700"><CircleAlert size={14} className="mt-0.5 shrink-0" />{entry.failure_reason}</p>}
+                      </td>
+                      <td className="p-4 text-slate-600">{entry.template_name ?? "Custom message"}</td>
+                      <td className="p-4">
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${entry.status === "sent" ? "bg-emerald-50 text-emerald-700" : entry.status === "failed" ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-700"}`}>
+                          {entry.status === "sent" ? <CheckCircle2 size={13} /> : entry.status === "failed" ? <CircleAlert size={13} /> : <Clock3 size={13} />}
+                          {entry.status}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap p-4 text-slate-500">{new Date(entry.created_at).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="p-10 text-center text-sm text-slate-500">{smsHistory.length ? "No SMS history matches your search." : "No SMS messages have been sent yet."}</p>
           )}
         </section>
         <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50 p-4">

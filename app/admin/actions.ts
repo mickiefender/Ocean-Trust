@@ -55,7 +55,7 @@ function isClientNumberConflict(error: unknown): boolean {
  * A fresh installation has no role assignments yet, so the first signed-in
  * operator is allowed through — the same bootstrap rule used by /setup.
  */
-async function requireOperator(): Promise<void> {
+async function requireOperator(): Promise<string> {
   const supabase = await createClient();
   const { data: authData } = await supabase.auth.getUser();
   const user = authData?.user;
@@ -68,7 +68,7 @@ async function requireOperator(): Promise<void> {
   if (error) throw error;
 
   const assignments = (data ?? []) as Row[];
-  if (assignments.length === 0) return;
+  if (assignments.length === 0) return user.id;
 
   const permitted = assignments.some((assignment) => {
     if (text(assignment.profile_id) !== user.id) return false;
@@ -79,6 +79,7 @@ async function requireOperator(): Promise<void> {
   if (!permitted) {
     throw new Error("Your account does not have permission to manage clients.");
   }
+  return user.id;
 }
 
 export async function loadClientFormOptions(): Promise<ClientFormOptions> {
@@ -303,18 +304,20 @@ export async function deleteClientApplication(clientId: string): Promise<void> {
   revalidatePath("/admin");
 }
 
-export async function sendClientSms(clientId: string, message: string): Promise<{ recipient: string }> {
-  await requireOperator();
+export async function sendClientSms(clientId: string, message: string, templateName?: string): Promise<{ recipient: string }> {
+  const userId = await requireOperator();
   if (typeof clientId !== "string" || typeof message !== "string") {
     throw new Error("A client and SMS message are required.");
   }
   const normalizedClientId = clientId.trim();
   const smsBody = message.trim();
+  const normalizedTemplateName = typeof templateName === "string" ? templateName.trim() : "";
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalizedClientId)) {
     throw new Error("Select a valid client before sending an SMS.");
   }
   if (!smsBody) throw new Error("Enter a message before sending.");
   if (smsBody.length > 1600) throw new Error("SMS messages cannot exceed 1,600 characters.");
+  if (normalizedTemplateName.length > 100) throw new Error("Template names cannot exceed 100 characters.");
 
   const apiKey = process.env.ARKESEL_API_KEY;
   const sender = process.env.ARKESEL_SENDER_ID?.trim();
@@ -325,7 +328,7 @@ export async function sendClientSms(clientId: string, message: string): Promise<
   const admin = createRepositoryClient();
   const { data: client, error: clientError } = await admin
     .from("clients")
-    .select("id,phone")
+    .select("id,phone,full_name,client_number")
     .eq("id", normalizedClientId)
     .single();
   if (clientError) throw new Error(describeDbError(clientError));
@@ -347,28 +350,66 @@ export async function sendClientSms(clientId: string, message: string): Promise<
     throw new Error("The client's phone number must include a valid international country code or be a local number starting with 0.");
   }
 
-  const response = await fetch("https://sms.arkesel.com/api/v2/sms/send", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "api-key": apiKey },
-    body: JSON.stringify({ sender, message: smsBody, recipients: [recipient] }),
-    signal: AbortSignal.timeout(20_000),
-  });
-  const responseText = await response.text();
-  let providerResponse: Record<string, unknown> = {};
-  if (responseText) {
-    try {
-      const parsed: unknown = JSON.parse(responseText);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        providerResponse = parsed as Record<string, unknown>;
-      }
-    } catch {
-      if (response.ok) throw new Error("Arkesel returned an unreadable response. Check the SMS provider configuration.");
-    }
+  const { data: historyRecord, error: historyError } = await admin
+    .from("sms_history")
+    .insert({
+      client_id: normalizedClientId,
+      client_name: String(client.full_name ?? client.client_number ?? "Unnamed client"),
+      recipient,
+      message: smsBody,
+      template_name: normalizedTemplateName || null,
+      status: "pending",
+      created_by: userId,
+    })
+    .select("id")
+    .single();
+  if (historyError || !historyRecord) {
+    throw new Error(`Unable to record this SMS attempt: ${historyError?.message ?? "No history record was created."}`);
   }
-  const providerStatus = String(providerResponse.status ?? "").toLowerCase();
-  if (!response.ok || ["error", "failed", "failure"].includes(providerStatus)) {
-    const providerMessage = String(providerResponse.message ?? providerResponse.error ?? "").trim();
-    throw new Error(providerMessage || `Arkesel could not send the SMS (HTTP ${response.status}).`);
+
+  let providerResponse: Record<string, unknown>;
+  try {
+    const response = await fetch("https://sms.arkesel.com/api/v2/sms/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "api-key": apiKey },
+      body: JSON.stringify({ sender, message: smsBody, recipients: [recipient] }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    const responseText = await response.text();
+    providerResponse = {};
+    if (responseText) {
+      try {
+        const parsed: unknown = JSON.parse(responseText);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          providerResponse = parsed as Record<string, unknown>;
+        }
+      } catch {
+        if (response.ok) throw new Error("Arkesel returned an unreadable response. Check the SMS provider configuration.");
+      }
+    }
+    const providerStatus = String(providerResponse.status ?? "").toLowerCase();
+    if (!response.ok || ["error", "failed", "failure"].includes(providerStatus)) {
+      const providerMessage = String(providerResponse.message ?? providerResponse.error ?? "").trim();
+      throw new Error(providerMessage || `Arkesel could not send the SMS (HTTP ${response.status}).`);
+    }
+  } catch (reason) {
+    const failureReason = reason instanceof Error ? reason.message : "Unexpected error while sending the SMS.";
+    const { error: updateError } = await admin
+      .from("sms_history")
+      .update({ status: "failed", failure_reason: failureReason.slice(0, 500) })
+      .eq("id", historyRecord.id);
+    if (updateError) {
+      throw new Error(`Unable to send the SMS: ${failureReason}. The failed attempt could not be saved to history: ${updateError.message}`);
+    }
+    throw reason instanceof Error ? reason : new Error(failureReason);
+  }
+
+  const { error: sentUpdateError } = await admin
+    .from("sms_history")
+    .update({ status: "sent", failure_reason: null })
+    .eq("id", historyRecord.id);
+  if (sentUpdateError) {
+    throw new Error(`Arkesel accepted the SMS for ${recipient}, but its history could not be updated. Check SMS history before retrying: ${sentUpdateError.message}`);
   }
 
   return { recipient };
