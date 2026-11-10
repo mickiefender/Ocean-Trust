@@ -52,7 +52,7 @@ import { createAdminAccount, loadAdminAccounts, setAdminAccountStatus, type Admi
 import { createCollectionSchedule, linkCollectionToLoan, loadCollections, recordCollection, type CollectionAccount, type CollectionClient, type CollectionLoan, type CollectionRow } from "./collection-data";
 import { deleteAdminUser, deleteBankerAccount, deleteCollection, deleteDisbursedLoan, deleteFinancialTransactions } from "./delete-actions";
 import { executeFinancialTransaction, loadAdminTransactions, type AdminTransaction } from "./transaction-data";
-import { approveLoan, createLoanApplication, createLoanProduct, disburseLoan, loadAdminLoans, recordLoanRepayment, type AdminLoan, type LoanProduct } from "./loan-data";
+import { approveLoan, createLoanApplication, createLoanProduct, disburseLoan, editLoanAmount, loadAdminLoans, recordLoanRepayment, type AdminLoan, type LoanProduct } from "./loan-data";
 import { loadAdminRoles, loadAdminUsers, type AdminRole, type AdminUser } from "./dashboard-data";
 import { NotificationBell } from "@/app/notifications/NotificationBell";
 import { countUnreadCollectionNotifications, markCollectionNotificationsRead } from "@/app/notifications/actions";
@@ -475,7 +475,7 @@ export default function Home() {
           {section === "Applications" && <><ClientManagement clients={filteredClients} query={query} setQuery={setQuery} filter={clientFilter} setFilter={setClientFilter} onAdd={() => { if (canManage) { setEditingClient(null); setModal("client"); } }} onViewDetails={openClientDetails} onReview={async (client, decision) => { await reviewClientApplication(client.id, decision); setClients(await loadAdminClients()); showNotice(decision === "approved" ? "Application approved." : "Application rejected."); }} onSelect={openClientDetails} canDelete={fullAdmin} onDelete={deleteApplication} onToggleStatus={(client) => requestConfirmation(`${client.status === "Active" ? "Deactivate" : "Activate"} client`, `Are you sure you want to ${client.status === "Active" ? "deactivate" : "activate"} ${client.name}?`, () => toggleClientStatus(client), client.status === "Active" ? "Deactivate" : "Activate")} />{clientError && <ErrorState message={clientError} onRetry={() => loadAdminClients().then(setClients).catch((error: Error) => setClientError(error.message))} />}</>}
           {section === "Collections" && <><CollectionManagement collections={collections} clients={clients} loans={loans} query={query} setQuery={setQuery} onAdd={() => canManageFinance && setModal("schedule")} onSelect={setSelectedCollection} onRecord={() => canManageFinance && setModal("collection")} canDelete={fullAdmin} onDelete={removeCollection} onNotice={showNotice} />{collectionError && <ErrorState message={collectionError} onRetry={() => loadCollections().then((result) => { setCollections(result.collections); setCollectionAccounts(result.accounts); setCollectionClients(result.clients); }).catch((error: Error) => setCollectionError(error.message))} />}</>}
           {section === "Transactions" && <><TransactionManagement transactions={transactions} query={query} setQuery={setQuery} onAdd={() => canManageFinance && setModal("transaction")} onRefresh={() => loadAdminTransactions().then(setTransactions)} canDelete={fullAdmin} selectedIds={selectedTransactionIds} onSelectionChange={setSelectedTransactionIds} onDelete={removeFinancialTransactions} />{transactionError && <ErrorState message={transactionError} onRetry={() => loadAdminTransactions().then(setTransactions).catch((error: Error) => setTransactionError(error.message))} />}</>}
-          {section === "Loans" && <><LoanManagement loans={loans} clients={clients} query={query} setQuery={setQuery} onAdd={async () => { if (!canManageFinance) return; try { const result = await loadAdminLoans(); setLoans(result.loans); setLoanProducts(result.products); setModal("loan"); } catch (error) { setLoanError(error instanceof Error ? error.message : "Unable to load loan products."); } }} onProduct={() => canManageFinance && setModal("product")} onSelect={setSelectedLoan} onStatus={async (loan, status) => { try { if (status === "disbursed") { await disburseLoan(loan.id); showNotice("Loan disbursed successfully."); } const result = await loadAdminLoans(); setLoans(result.loans); } catch (error) { showNotice(error instanceof Error ? error.message : "Unable to update loan status."); } }} canDelete={fullAdmin} onDelete={removeDisbursedLoan} onNotice={showNotice} />{loanError && <ErrorState message={loanError} onRetry={() => loadAdminLoans().then((result) => { setLoans(result.loans); setLoanProducts(result.products); }).catch((error: Error) => setLoanError(error.message))} />}</>}
+          {section === "Loans" && <><LoanManagement loans={loans} clients={clients} query={query} setQuery={setQuery} onAdd={async () => { if (!canManageFinance) return; try { const result = await loadAdminLoans(); setLoans(result.loans); setLoanProducts(result.products); setModal("loan"); } catch (error) { setLoanError(error instanceof Error ? error.message : "Unable to load loan products."); } }} onProduct={() => canManageFinance && setModal("product")} onSelect={setSelectedLoan} onStatus={async (loan, status) => { try { if (status === "disbursed") { await disburseLoan(loan.id); showNotice("Loan disbursed successfully."); } const result = await loadAdminLoans(); setLoans(result.loans); } catch (error) { showNotice(error instanceof Error ? error.message : "Unable to update loan status."); } }} canDelete={fullAdmin} canEditAmount={fullAdmin} onEditAmount={async (loan, amount) => { await editLoanAmount(loan.id, amount); const [loanData, clientData, accountData, collectionData, transactionData] = await Promise.all([loadAdminLoans(), loadAdminClients(), loadAdminAccounts(), loadCollections(), loadAdminTransactions()]); setLoans(loanData.loans); setLoanProducts(loanData.products); setClients(clientData); setAccounts(accountData.accounts); applyCollections(collectionData); setTransactions(transactionData); showNotice("Loan amount updated in the application, loan, account ledger, and repayment schedule."); }} onDelete={removeDisbursedLoan} />{loanError && <ErrorState message={loanError} onRetry={() => loadAdminLoans().then((result) => { setLoans(result.loans); setLoanProducts(result.products); }).catch((error: Error) => setLoanError(error.message))} />}</>}
           {section === "Bankers" && <><BankerManagement bankers={bankers} branches={bankerBranches} clients={clients} query={query} setQuery={setQuery} onAdd={() => setModal("banker")} onSelect={(id) => setSelectedBankerId(id)} onRefresh={() => loadBankerManagement().then((result) => { setBankers(result.bankers); setBankerBranches(result.branches); })} canDelete={fullAdmin} onDelete={removeBanker} onNotice={showNotice} />{bankerError && <p className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{bankerError}</p>}</>}
           {section === "Company" && <CompanyView key={sectionRefreshKey} />}
           {section === "Branches" && <><ManagementView title="Branch management" description="Manage your locations, managers, and branch access." action="Create branch" onAction={() => setModal("branch")} query={query} setQuery={setQuery}><BranchTable branches={filteredBranches} /></ManagementView>{branchError && <p className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{branchError}</p>}</>}
@@ -846,7 +846,7 @@ function CollectionManagement({ collections, clients, loans, query, setQuery, on
         {!filtered.length && <p className="p-10 text-center text-sm text-slate-500">No collection schedules match this view.</p>}
       </div>
     </div>
-  </section>;
+  </section>
 }
 function CollectionScheduleModal({ clients, accounts, onClose, onSaved }: { clients: CollectionClient[]; accounts: CollectionAccount[]; onClose: () => void; onSaved: () => Promise<void> }) {
   const [clientId, setClientId] = useState(clients[0]?.id ?? "");
@@ -886,9 +886,11 @@ function TransactionManagement({ transactions, query, setQuery, onAdd, onRefresh
   return <section className="space-y-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-bold text-[#102a43]">Financial transactions</h2><p className="text-sm text-slate-500">Posted balances will be adjusted when eligible ledger transactions are deleted. Loan-linked transactions require deleting the loan instead.</p></div><button onClick={onAdd} className="rounded-lg bg-[#102a43] px-4 py-2.5 text-sm font-semibold text-white">+ New transaction</button></div><div className="flex flex-wrap items-center gap-2"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search reference, client, account or status..." className="w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm" /><button onClick={() => void onRefresh()} className="rounded-lg border px-3 py-2 text-sm font-semibold">Refresh</button>{canDelete && selectedIds.length > 0 && <><span className="text-sm text-slate-600">{selectedIds.length} selected</span><button onClick={() => onDelete(selectedIds)} className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700">Delete selected</button><button onClick={() => onSelectionChange([])} className="rounded-lg border px-3 py-2 text-sm font-semibold text-slate-600">Clear selection</button></>}</div><div className="overflow-x-auto rounded-xl border border-slate-200 bg-white"><table className="w-full min-w-[1050px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr>{canDelete && <th className="p-4"><input type="checkbox" checked={allFilteredSelected} onChange={toggleAll} aria-label="Select all filtered transactions" /></th>}<th className="p-4">Reference</th><th className="p-4">Type</th><th className="p-4">Client/account</th><th className="p-4">Amount</th><th className="p-4">Status</th><th className="p-4">Recorded by</th><th className="p-4">Created</th>{canDelete && <th className="p-4">Actions</th>}</tr></thead><tbody>{filtered.map((item) => <tr key={item.id} className="border-t border-slate-100">{canDelete && <td className="p-4"><input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleOne(item.id)} aria-label={`Select transaction ${item.reference}`} /></td>}<td className="p-4 font-semibold">{item.reference}</td><td className="p-4 capitalize">{item.type.replace("_", " ")}</td><td className="p-4">{item.clientName}<div className="text-xs text-slate-400">{item.accountNumber}</div></td><td className="p-4 font-semibold">{item.currency === "GHS" ? "GH₵" : item.currency} {item.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</td><td className="p-4"><Badge tone={item.status === "completed" || item.status === "posted" ? "green" : item.status === "failed" ? "red" : "amber"}>{item.status}</Badge></td><td className="p-4 text-slate-600">{item.recordedBy}</td><td className="p-4 text-slate-500">{new Date(item.createdAt).toLocaleString()}</td>{canDelete && <td className="p-4"><button onClick={() => onDelete([item.id])} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" aria-label={`Delete transaction ${item.reference}`} title="Delete transaction"><Trash2 size={16} /></button></td>}</tr>)}</tbody></table>{!filtered.length && <p className="p-8 text-center text-sm text-slate-500">No transactions found.</p>}</div></section>;
 }
 
-function LoanManagement({ loans, clients, query, setQuery, onAdd, onProduct, onSelect, onStatus, canDelete, onDelete, onNotice }: { loans: AdminLoan[]; clients: Client[]; query: string; setQuery: (value: string) => void; onAdd: () => void | Promise<void>; onProduct: () => void; onSelect: (loan: AdminLoan) => void; onStatus: (loan: AdminLoan, status: "pending" | "disbursed") => Promise<void>; canDelete: boolean; onDelete: (loan: AdminLoan) => void; onNotice: (message: string) => void }) {
+function LoanManagement({ loans, clients, query, setQuery, onAdd, onProduct, onSelect, onStatus, canDelete, canEditAmount, onEditAmount, onDelete }: { loans: AdminLoan[]; clients: Client[]; query: string; setQuery: (value: string) => void; onAdd: () => void | Promise<void>; onProduct: () => void; onSelect: (loan: AdminLoan) => void; onStatus: (loan: AdminLoan, status: "pending" | "disbursed") => Promise<void>; canDelete: boolean; canEditAmount: boolean; onEditAmount: (loan: AdminLoan, amount: number) => Promise<void>; onDelete: (loan: AdminLoan) => void }) {
+  const [editingLoan, setEditingLoan] = useState<AdminLoan | null>(null);
   const filtered = loans.filter((loan) => `${loan.loanNumber} ${loan.clientName} ${loan.productName} ${loan.status}`.toLowerCase().includes(query.toLowerCase()));
-  return <section className="space-y-5">
+  return <>
+  <section className="space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h2 className="text-xl font-bold text-[#102a43]">Loan management</h2><p className="text-sm text-slate-500">Products, applications, approval, disbursement, repayments, interest, and overdue monitoring.</p></div>
       <div className="flex gap-2"><button onClick={onProduct} className="rounded-lg border px-4 py-2.5 text-sm font-semibold">Loan products</button><button onClick={onAdd} className="rounded-lg bg-[#102a43] px-4 py-2.5 text-sm font-semibold text-white">New application</button></div>
@@ -909,13 +911,53 @@ function LoanManagement({ loans, clients, query, setQuery, onAdd, onProduct, onS
             <td className="p-4">{loan.source === "legacy_application"
               ? <Badge tone="blue">Approved application</Badge>
               : <select value={displayStatus === "disbursed" ? "disbursed" : "pending"} onChange={(event) => void onStatus(loan, event.target.value as "pending" | "disbursed")} disabled={displayStatus === "disbursed"} className="rounded-full border-0 bg-slate-50 px-2.5 py-1 text-xs font-semibold capitalize"><option value="pending">Pending</option><option value="disbursed">Disbursed</option></select>}</td>
-            <td className="p-4"><div className="flex items-center gap-3"><button onClick={() => onSelect(loan)} className="font-semibold text-blue-700">View history</button>{canDelete && loan.disbursedAmount !== null && <button onClick={() => onDelete(loan)} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" aria-label={`Delete disbursed loan ${loan.loanNumber}`} title="Delete disbursed loan"><Trash2 size={16} /></button>}</div></td>
+            <td className="p-4"><div className="flex items-center gap-3"><button onClick={() => onSelect(loan)} className="font-semibold text-blue-700">View history</button>{canEditAmount && ((loan.source === "loan" && ["approved", "active"].includes(loan.status)) || (loan.source === "application" && loan.status === "pending") || (loan.source === "legacy_application" && loan.id.startsWith("legacy-application:"))) && <button onClick={() => setEditingLoan(loan)} className="inline-flex items-center gap-1 font-semibold text-slate-600 hover:text-[#102a43]"><PencilLine size={14} />Edit amount</button>}{canDelete && loan.disbursedAmount !== null && <button onClick={() => onDelete(loan)} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" aria-label={`Delete disbursed loan ${loan.loanNumber}`} title="Delete disbursed loan"><Trash2 size={16} /></button>}</div></td>
           </tr>;
         })}</tbody>
       </table>
       {!filtered.length && <PortalEmptyState title="No loans found" description="Create a loan application or adjust your search." action={<button onClick={onAdd} className="rounded-lg bg-[#102a43] px-4 py-2 text-sm font-semibold text-white">Create application</button>} />}
     </div>
-  </section>;
+  </section>
+  {editingLoan && <LoanAmountModal loan={editingLoan} onClose={() => setEditingLoan(null)} onSave={async (amount) => { await onEditAmount(editingLoan, amount); setEditingLoan(null); }} />}
+  </>;
+}
+
+function LoanAmountModal({ loan, onClose, onSave }: { loan: AdminLoan; onClose: () => void; onSave: (amount: number) => Promise<void> }) {
+  const [amount, setAmount] = useState(String(loan.principal));
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    const parsedAmount = Number(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      setError("Enter a loan amount greater than zero.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await onSave(parsedAmount);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to update the loan amount.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  const isDisbursed = loan.source === "loan" && loan.status === "active";
+  return <Modal title={`Edit loan amount · ${loan.loanNumber}`} onClose={onClose}>
+    <div className="space-y-4">
+      <p className="text-sm leading-6 text-slate-600">{isDisbursed
+        ? "The application and loan record will be updated, the account ledger will be adjusted, and unpaid repayment installments and collection totals will be recalculated. A reduction requires enough available account balance."
+        : "The application amount and approved loan amount will be updated together."}</p>
+      <label className="block text-sm font-semibold text-slate-700">Loan amount (GH₵)
+        <input autoFocus type="number" min="0.01" step="0.01" required value={amount} onChange={(event) => setAmount(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-normal outline-none focus:border-blue-500" />
+      </label>
+      {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+      <div className="flex justify-end gap-3 border-t border-slate-100 pt-4">
+        <button type="button" disabled={saving} onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600">Cancel</button>
+        <button type="button" disabled={saving || Number(amount) === loan.principal} onClick={() => void save()} className="rounded-lg bg-[#102a43] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Updating..." : "Update amount"}</button>
+      </div>
+    </div>
+  </Modal>;
 }
 
 function LoanProductModal({ products, onClose, onSaved }: { products: LoanProduct[]; onClose: () => void; onSaved: () => Promise<void> }) {

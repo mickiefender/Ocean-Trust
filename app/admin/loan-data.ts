@@ -93,6 +93,18 @@ export async function approveLoan(id: string, approvedAmount: number) {
   if (error) throw new Error(error.message);
 }
 
+export async function editLoanAmount(id: string, amount: number) {
+  const recordId = id.startsWith("legacy-application:") ? id.slice("legacy-application:".length) : id;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(recordId)) {
+    throw new Error("This legacy loan has no editable loan application record.");
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Loan amount must be greater than zero.");
+  }
+  const { error } = await createClient().rpc("update_loan_amount", { p_record_id: recordId, p_amount: amount });
+  if (error) throw new Error(error.message);
+}
+
 export async function disburseLoan(id: string) {
   const { error } = await createClient().rpc("disburse_loan", { p_loan_id: id });
   if (error) throw new Error(error.message);
